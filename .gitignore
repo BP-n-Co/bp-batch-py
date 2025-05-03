@@ -1,0 +1,21 @@
+.env
+data
+tmp/
+test/
+.venv
+
+__pycache__
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*~
+
+# MacOS system files
+.DS_Store
+
+# Logs and temporary files
+*.log
+*.tmp
+*.out
