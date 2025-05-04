@@ -31,6 +31,10 @@ Make sure to install and activate the extensions
 - black formatter
 - isort
 
+Note that you should make sure to have the same args in your isort and black formatter settings as in the `pre-commit-config.yaml` file
+![](images/pre_commit_config.png)
+![](images/isort_settings.png)
+
 Then, once venv is activated, make sure to install pre-commit with
 
 ```bash
