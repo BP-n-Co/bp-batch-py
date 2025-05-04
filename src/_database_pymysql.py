@@ -245,11 +245,92 @@ class MysqlClient:
         if not self.connection:
             raise NoConnectionError(self.logger)
         with self.connection.cursor() as cursor:
-            cursor.execute(query=query, args=args)
-            res = cursor.fetchall()
-            if silent:
+            try:
+                cursor.execute(query=query, args=args)
+                res = cursor.fetchall()
+            except pymysql.err.ProgrammingError as e:
+                res = tuple()
+                self.logger.warning(f"error while executing query {type(e)=}, {str(e)}")
+            if not silent:
                 self.logging(cursor)
         return res
+
+    def count(
+        self,
+        table_name: str,
+        select_col: list[str] = list(),
+        cond_null: list[str] = list(),
+        cond_not_null: list[str] = list(),
+        cond_in: dict[str, list] = dict(),
+        cond_eq: dict[str, object] = dict(),
+        cond_neq: dict[str, object] = dict(),
+        cond_leq: dict[str, object] = dict(),
+        cond_geq: dict[str, object] = dict(),
+        cond_l: dict[str, object] = dict(),
+        cond_g: dict[str, object] = dict(),
+        silent: bool = False,
+    ) -> int | None:
+        """Execute a SELECT COUNT(...) query with various conditions.
+
+        Parameters
+        ----------
+        table_name : str
+            Name of the table to query
+        select_col : list[str], optional
+            List of columns to include in the COUNT(...), by default all columns
+        cond_null : list[str], optional
+            Columns that must be NULL
+        cond_not_null : list[str], optional
+            Columns that must not be NULL
+        cond_in : dict[str, list], optional
+            Column values that must be in given list
+        cond_eq : dict[str, object], optional
+            Column values that must equal given value
+        cond_neq : dict[str, object], optional
+            Column values that must not equal given value
+        cond_leq : dict[str, object], optional
+            Column values that must be less than or equal to given value
+        cond_geq : dict[str, object], optional
+            Column values that must be greater than or equal to given value
+        cond_l : dict[str, object], optional
+            Column values that must be less than given value
+        cond_g : dict[str, object], optional
+            Column values that must be greater than given value
+        silent : bool, optional
+            If True, suppress logging of the query execution, by default False
+
+        Returns
+        -------
+        int
+            result of the count
+        None
+            if query went wrong
+
+        Raises
+        ------
+        NoConnectionError
+            If no database connection exists
+        """
+        if not self.connection:
+            raise NoConnectionError(self.logger)
+        query = f"SELECT COUNT({', '.join(select_col) if select_col else '*'}) AS ct FROM {table_name} "
+        query = query + self.generate_cond(
+            cond_eq=cond_eq,
+            cond_g=cond_g,
+            cond_geq=cond_geq,
+            cond_in=cond_in,
+            cond_l=cond_l,
+            cond_leq=cond_leq,
+            cond_neq=cond_neq,
+            cond_not_null=cond_not_null,
+            cond_null=cond_null,
+        )
+        query = query + ";"
+
+        res_mysql = self.execute(query=query, silent=silent)
+        if not res_mysql:
+            return None
+        return res_mysql[0].get("ct", None)
 
     def select(
         self,
