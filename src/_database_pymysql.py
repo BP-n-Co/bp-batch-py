@@ -11,6 +11,8 @@ from src._config import (
     base_logger,
 )
 
+lol = "test"
+
 
 class NoConnectionError(Exception):
     def __init__(self, logger: Logger | None = None):
