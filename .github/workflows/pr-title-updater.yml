@@ -3,6 +3,8 @@ name: Update PR Title with Linear Issue ID
 on:
   pull_request:
     types: [opened]
+    branches-ignore:
+      - main
 
 permissions:
   pull-requests: write
@@ -32,4 +34,12 @@ jobs:
                   title: newTitle
                 });
               }
+            } else {
+              const newTitle = `[NO-TICKET] ${context.payload.pull_request.title}`;
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                title: newTitle
+              });
             }
