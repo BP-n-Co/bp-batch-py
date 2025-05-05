@@ -2,7 +2,7 @@ name: Update PR Title with Linear Issue ID
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize]
     branches-ignore:
       - main
 
@@ -43,3 +43,11 @@ jobs:
                 title: newTitle
               });
             }
+
+            const author = context.payload.pull_request.user.login;
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              assignees: [author]
+            });
