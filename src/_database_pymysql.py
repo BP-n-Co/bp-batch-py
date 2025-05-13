@@ -2,7 +2,7 @@ from logging import Logger
 
 import pymysql.cursors
 
-from src._config import (
+from _config import (
     MYSQL_DATABASE,
     MYSQL_HOST,
     MYSQL_PASSWORD,
@@ -145,7 +145,7 @@ class MysqlClient:
         cond_l: dict[str, object] = dict(),
         cond_g: dict[str, object] = dict(),
         silent: bool = False,
-    ) -> tuple:
+    ) -> tuple[dict[str, object], ...]:
         """Delete rows from a database table based on conditions.
 
         Parameters
@@ -214,7 +214,7 @@ class MysqlClient:
 
     def execute(
         self, query: str, args: tuple | dict | None = None, silent=False
-    ) -> tuple:
+    ) -> tuple[dict[str, object], ...]:
         """Execute a SQL query and return the results.
 
         Parameters
@@ -323,7 +323,8 @@ class MysqlClient:
         res_mysql = self.execute(query=query, silent=silent)
         if not res_mysql:
             return None
-        return res_mysql[0].get("ct", None)
+        res = res_mysql[0].get("ct", None)
+        return int(str(res)) if res else None
 
     def select(
         self,
@@ -338,10 +339,12 @@ class MysqlClient:
         cond_geq: dict[str, object] = dict(),
         cond_l: dict[str, object] = dict(),
         cond_g: dict[str, object] = dict(),
-        silent: bool = False,
+        order_by: str = "",
+        ascending_order: bool = True,
         limit: int = 0,
         offset: int = 0,
-    ) -> tuple:
+        silent: bool = False,
+    ) -> tuple[dict[str, object], ...]:
         """Execute a SELECT query with various conditions.
 
         Parameters
@@ -399,6 +402,10 @@ class MysqlClient:
             cond_not_null=cond_not_null,
             cond_null=cond_null,
         )
+        if order_by:
+            query = (
+                query + f" ORDER BY {order_by} {'ASC' if ascending_order else 'DESC'} "
+            )
         if limit:
             query = query + f" LIMIT {limit} "
             query = query + f" OFFSET {offset} "
@@ -523,7 +530,7 @@ class MysqlClient:
         cond_l: dict[str, object] = dict(),
         cond_g: dict[str, object] = dict(),
         silent: bool = False,
-    ) -> tuple:
+    ) -> tuple[dict[str, object], ...]:
         """Update rows in a database table based on conditions.
 
         Parameters
@@ -597,7 +604,7 @@ class MysqlClient:
                 f"error when trying to get the ids to update, {type(e)=} {str(e)=}"
             )
             raise e
-        ids_to_update_ls = [dt["id"] for dt in ids_to_update]
+        ids_to_update_ls = [str(dt["id"]) for dt in ids_to_update]
         if not ids_to_update:
             self.logger.info("nothing to update")
             return tuple()

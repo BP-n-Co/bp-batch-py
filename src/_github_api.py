@@ -3,8 +3,7 @@ from logging import Logger
 
 from requests import Session
 
-from src._config import GITHUB_TOKEN, base_logger
-from src.models import GitUser, Repository
+from _config import GITHUB_TOKEN, base_logger
 
 
 class GithubRequestException(Exception):
@@ -27,7 +26,9 @@ class GithubClient:
     def close(self):
         self.session.close()
 
-    def graphql_post(self, query: str) -> dict:
+    def graphql_post(self, query: str, silent: bool = False) -> dict:
+        if not silent:
+            self.logger.debug(f"Github api executed: {query}")
         headers = {"Authorization": f"token {self.token}"}
         resp = self.session.post(
             url="https://api.github.com/graphql", headers=headers, json={"query": query}
@@ -46,58 +47,6 @@ class GithubClient:
             message = f"got response without data : {str(resp_dict)=}"
             self.logger.warning(message)
             raise GithubRequestException(detail=message)
+        if not silent:
+            self.logger.debug(f"Got response from github {resp_dict}")
         return resp_dict["data"]
-
-    def get_user_info(self, id: str) -> GitUser:
-        query = f"""
-            query {{
-                node(id: "{id}") {{
-                    ... on User {{
-                        avatarUrl
-                        email
-                        name
-                        login
-                    }}
-                }}
-            }}
-        """
-        user_info = self.graphql_post(query=query)["node"]
-        if not user_info:
-            message = f"could not retreive any user info for {id=}"
-            self.logger.warning(message)
-            raise GithubWrongAttributesException(detail=message)
-        user = GitUser(
-            id=id,
-            avatarUrl=user_info["avatarUrl"],
-            email=user_info["email"],
-            name=user_info["name"],
-            login=user_info["login"],
-        )
-        return user
-
-    def get_repository_info(self, name: str, owner: str) -> Repository:
-        query = f"""
-        query {{
-            repository(owner: "{owner}", name: "{name}") {{ 
-                id
-                isPrivate
-                createdAt
-                owner {{
-                    id
-                }}
-            }}
-        }}
-        """
-        repo_info = self.graphql_post(query=query)["repository"]
-        if not repo_info:
-            message = f"could not retreive any repository info for {name=}, {owner=}"
-            self.logger.warning(message)
-            raise GithubWrongAttributesException(detail=message)
-        repo = Repository(
-            id=repo_info["id"],
-            name=name,
-            ownerId=repo_info["owner"]["id"],
-            isPrivate=repo_info["isPrivate"] == "True",
-            createdAt=datetime.strptime(repo_info["createdAt"], self.date_format),
-        )
-        return repo

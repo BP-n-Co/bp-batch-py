@@ -14,6 +14,11 @@ load_dotenv(override=False)
 base_logger = logging.getLogger(name="BP_logger")
 
 
+class DateTimeFormat:
+    github = "%Y-%m-%dT%H:%M:%SZ"
+    bp_co_long = "%Y-%m-%d %H:%M:%S"
+
+
 class ServiceEnv:
     local = "local"
     staging = "staging"
@@ -28,6 +33,8 @@ MYSQL_USER = os.getenv("MYSQL_USER", "")
 MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
 MYSQL_PORT = int(os.getenv("MYSQL_PORT", 3306))
 MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
+
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 
 
 class JsonFormatter(logging.Formatter):

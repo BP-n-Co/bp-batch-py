@@ -4,8 +4,6 @@ tmp/
 test/
 .venv
 
-save_requirements.txt
-
 __pycache__
 
 # IDE/editor files
