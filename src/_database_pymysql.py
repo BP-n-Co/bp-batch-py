@@ -1,3 +1,4 @@
+import traceback
 from logging import Logger
 
 import pymysql.cursors
@@ -244,7 +245,9 @@ class MysqlClient:
                 cursor.execute(query=query, args=args)
                 res = cursor.fetchall()
             except pymysql.err.ProgrammingError as e:
-                self.logger.warning(f"error while executing query {type(e)=}, {str(e)}")
+                self.logger.warning(
+                    f"error while executing query {type(e)=}, {str(e)}, {traceback.print_exc()}"
+                )
                 raise MySqlWrongQueryError(f"{type(e)=}, {str(e)=}")
             if not silent:
                 self.logging(cursor)
@@ -470,7 +473,9 @@ class MysqlClient:
                 table_name=table_name, cond_eq={"id": id}, silent=silent
             )
         except MySqlWrongQueryError as e:
-            self.logger.warning(f"wrong query when trying to delete by id, {str(e)}")
+            self.logger.warning(
+                f"wrong query when trying to delete by id, {type(e)=}, {str(e)}, {traceback.print_exc()}"
+            )
             raise e
         self.connection.commit()  # type: ignore
         return res_mysql[0] if res_mysql else dict()
@@ -511,7 +516,9 @@ class MysqlClient:
                 query=query, args=tuple(v for v in values.values()), silent=silent
             )
         except MySqlWrongQueryError as e:
-            self.logger.warning(f"wrong query when trying to insert one, {str(e)}")
+            self.logger.warning(
+                f"wrong query when trying to insert one, {type(e)=}, {str(e)}, {traceback.print_exc()}"
+            )
             raise e
         self.connection.commit()  # type: ignore
 
@@ -601,7 +608,7 @@ class MysqlClient:
             )
         except Exception as e:
             self.logger.warning(
-                f"error when trying to get the ids to update, {type(e)=} {str(e)=}"
+                f"error when trying to get the ids to update, {type(e)=}, {str(e)}, {traceback.print_exc()}"
             )
             raise e
         ids_to_update_ls = [str(dt["id"]) for dt in ids_to_update]
@@ -620,7 +627,9 @@ class MysqlClient:
         try:
             self.execute(query=query, silent=silent)
         except MySqlWrongQueryError as e:
-            self.logger.warning(f"wrong query when trying to update, {str(e)}")
+            self.logger.warning(
+                f"wrong query when trying to update, {type(e)=}, {str(e)}, {traceback.print_exc()}"
+            )
             raise e
         self.connection.commit()  # type: ignore
 
@@ -660,6 +669,14 @@ class MysqlClient:
                 silent=silent,
             )
         except MySqlWrongQueryError as e:
-            self.logger.warning(f"wrong query when trying to update by id, {str(e)}")
+            self.logger.warning(
+                f"wrong query when trying to update by id, {type(e)=}, {str(e)}, {traceback.print_exc()}"
+            )
             raise e
         return mysql_res[0] if mysql_res else dict()
+
+    def id_exists(self, table_name: str, id: str, silent: bool = False) -> bool:
+        res = self.select_by_id(table_name=table_name, id=id, silent=silent)
+        if res:
+            return True
+        return False

@@ -16,13 +16,14 @@ class CommitsFetcher:
         self.github_users_id: set[str] = set()
         self.github_users: dict[str, dict[str, object]] = dict()
 
-    def work(self):
+    def work(self) -> int:
         self.fetch_repos()
         self.fetch_commits()
         self.extract_users()
         self.add_missing_user_in_db()
-        self.add_commits_to_database()
+        tot = self.add_commits_to_database()
         self.update_root_is_reached()
+        return tot
 
     def fetch_repos(self):
         self.logger.info("Fetching repositories from database")
@@ -62,18 +63,17 @@ class CommitsFetcher:
                 table_name="repository", id=repo_id, values={"rootCommitIsReached": "1"}
             )
 
-    def add_commits_to_database(self):
+    def add_commits_to_database(self) -> int:
         self.logger.info("Adding commits to database")
         tot = 0
         for repo_id, commits in self.commits.items():
             self.logger.debug(f"Adding commits to {repo_id=}")
             cnt = 0
-            for commit in self.commits[repo_id]:
+            for commit in commits:
                 self.logger.debug("Checking if commit is already in database")
-                res = self.mysql_client.count(
-                    table_name="commit", cond_eq={"id": commit["id"]}
-                )
-                if res:
+                if self.mysql_client.id_exists(
+                    table_name="commit", id=str(commit["id"]), silent=SILENT
+                ):
                     self.logger.debug(f"Found already existing commit {commit['id']}")
                     continue
                 cnt += 1
@@ -166,7 +166,7 @@ class CommitsFetcher:
                     silent=SILENT,
                 )
             tot += cnt
-        self.logger.info(f"added a total of {tot} in {len(self.commits)} repositories")
+        return tot
 
     def add_missing_user_in_db(self):
         self.logger.info(f"Adding missing users in database")
