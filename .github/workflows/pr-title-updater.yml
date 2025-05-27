@@ -1,0 +1,53 @@
+name: Update PR Title with Linear Issue ID
+
+on:
+  pull_request:
+    types: [opened]
+    branches-ignore:
+      - main
+
+permissions:
+  pull-requests: write
+
+jobs:
+  update-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract and update PR title
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            const branchName = context.payload.pull_request.head.ref;
+            const prNumber = context.payload.pull_request.number;
+            const match = branchName.match(/(bp-\d+)/i);
+
+            if (match) {
+              const issueId = match[1].toUpperCase();
+              const oldTitle = context.payload.pull_request.title;
+
+              if (!oldTitle.includes(issueId)) {
+                const newTitle = `[${issueId}] ${oldTitle}`;
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                  title: newTitle
+                });
+              }
+            } else {
+              const newTitle = `[NO-TICKET] ${context.payload.pull_request.title}`;
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                title: newTitle
+              });
+            }
+
+            const author = context.payload.pull_request.user.login;
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              assignees: [author]
+            });
