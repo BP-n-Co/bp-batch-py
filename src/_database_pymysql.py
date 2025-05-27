@@ -1,9 +1,8 @@
-import traceback
 from logging import Logger
 
 import pymysql.cursors
 
-from _config import (
+from src._config import (
     MYSQL_DATABASE,
     MYSQL_HOST,
     MYSQL_PASSWORD,
@@ -13,29 +12,36 @@ from _config import (
 )
 
 
-class MySqlNoConnectionError(Exception):
-    def __init__(self):
-        super().__init__("No connection to database yet.")
+class NoConnectionError(Exception):
+    def __init__(self, logger: Logger | None = None):
+        self.message = "No connection to database yet."
+        if logger:
+            logger.critical(self.message)
+        super().__init__(self.message)
 
 
-class MySqlNoValueInsertionError(Exception):
-    def __init__(self):
-        super().__init__("No value given to insert.")
+class NoValueInsertionError(Exception):
+    def __init__(self, logger: Logger | None = None):
+        self.message = "No value given to insert."
+        if logger:
+            logger.critical(self.message)
+        super().__init__(self.message)
 
 
-class MySqlDuplicateColumnUpdateError(Exception):
-    def __init__(self, column: str):
-        super().__init__(f"Updating multiple time the same column, {column=}")
+class DuplicateColumnUpdateError(Exception):
+    def __init__(self, column: str, logger: Logger | None = None):
+        self.message = f"Updating multiple time the same column, {column=}"
+        if logger:
+            logger.critical(self.message)
+        super().__init__(self.message)
 
 
-class MySqlNoUpdateValuesError(Exception):
-    def __init__(self):
-        super().__init__("Nothing given to update.")
-
-
-class MySqlWrongQueryError(Exception):
-    def __init__(self, detail: str | None = None) -> None:
-        super().__init__(detail)
+class NoUpdateValuesError(Exception):
+    def __init__(self, logger: Logger | None = None):
+        self.message = "Nothing given to update."
+        if logger:
+            logger.critical(self.message)
+        super().__init__(self.message)
 
 
 class MysqlClient:
@@ -69,8 +75,7 @@ class MysqlClient:
             if not check_alive_res:
                 self.__connect()
         except:
-            self.logger.critical("ERROR: Lost connection to Database.")
-            raise MySqlNoConnectionError()
+            Exception("ERROR: lost connection to MysqlClient.")
 
     def logging(self, cursor):
         self.logger.debug(f"MysqlClient executed: {str(cursor._executed)}")
@@ -146,7 +151,7 @@ class MysqlClient:
         cond_l: dict[str, object] = dict(),
         cond_g: dict[str, object] = dict(),
         silent: bool = False,
-    ) -> tuple[dict[str, object], ...]:
+    ) -> tuple:
         """Delete rows from a database table based on conditions.
 
         Parameters
@@ -183,8 +188,6 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
-        MySqlWrongQueryError
-            If query is wrong
         """
         res_mysql = self.select(
             table_name=table_name,
@@ -212,19 +215,12 @@ class MysqlClient:
             cond_null=cond_null,
         )
         query = query + ";"
-        try:
-            self.execute(query=query, silent=silent)
-        except MySqlWrongQueryError as e:
-            self.logger.warning(
-                f"wrong query when trying to update by id, {type(e)=}, {str(e)}, {traceback.print_exc()}"
-            )
-            raise e
-        self.connection.commit()  # type: ignore
+        self.execute(query=query, silent=silent)
         return res_mysql
 
     def execute(
         self, query: str, args: tuple | dict | None = None, silent=False
-    ) -> tuple[dict[str, object], ...]:
+    ) -> tuple:
         """Execute a SQL query and return the results.
 
         Parameters
@@ -245,102 +241,15 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
-        MySqlWrongQueryError
-            If query is wrong
         """
         if not self.connection:
-            self.logger.error("could not execute query, no connection to Database")
-            raise MySqlNoConnectionError()
+            raise NoConnectionError(self.logger)
         with self.connection.cursor() as cursor:
-            try:
-                cursor.execute(query=query, args=args)
-                res = cursor.fetchall()
-            except pymysql.err.ProgrammingError as e:
-                self.logger.warning(
-                    f"error while executing query {type(e)=}, {str(e)}, {traceback.print_exc()}"
-                )
-                raise MySqlWrongQueryError(f"{type(e)=}, {str(e)=}")
-            if not silent:
+            cursor.execute(query=query, args=args)
+            res = cursor.fetchall()
+            if silent:
                 self.logging(cursor)
         return res
-
-    def count(
-        self,
-        table_name: str,
-        select_col: list[str] = list(),
-        cond_null: list[str] = list(),
-        cond_not_null: list[str] = list(),
-        cond_in: dict[str, list] = dict(),
-        cond_eq: dict[str, object] = dict(),
-        cond_neq: dict[str, object] = dict(),
-        cond_leq: dict[str, object] = dict(),
-        cond_geq: dict[str, object] = dict(),
-        cond_l: dict[str, object] = dict(),
-        cond_g: dict[str, object] = dict(),
-        silent: bool = False,
-    ) -> int | None:
-        """Execute a SELECT COUNT(...) query with various conditions.
-
-        Parameters
-        ----------
-        table_name : str
-            Name of the table to query
-        select_col : list[str], optional
-            List of columns to include in the COUNT(...), by default all columns
-        cond_null : list[str], optional
-            Columns that must be NULL
-        cond_not_null : list[str], optional
-            Columns that must not be NULL
-        cond_in : dict[str, list], optional
-            Column values that must be in given list
-        cond_eq : dict[str, object], optional
-            Column values that must equal given value
-        cond_neq : dict[str, object], optional
-            Column values that must not equal given value
-        cond_leq : dict[str, object], optional
-            Column values that must be less than or equal to given value
-        cond_geq : dict[str, object], optional
-            Column values that must be greater than or equal to given value
-        cond_l : dict[str, object], optional
-            Column values that must be less than given value
-        cond_g : dict[str, object], optional
-            Column values that must be greater than given value
-        silent : bool, optional
-            If True, suppress logging of the query execution, by default False
-
-        Returns
-        -------
-        int
-            result of the count
-        None
-            if query went wrong
-
-        Raises
-        ------
-        NoConnectionError
-            If no database connection exists
-        MySqlWrongQueryError
-            If query is wrong
-        """
-        query = f"SELECT COUNT({', '.join(select_col) if select_col else '*'}) AS ct FROM {table_name} "
-        query = query + self.generate_cond(
-            cond_eq=cond_eq,
-            cond_g=cond_g,
-            cond_geq=cond_geq,
-            cond_in=cond_in,
-            cond_l=cond_l,
-            cond_leq=cond_leq,
-            cond_neq=cond_neq,
-            cond_not_null=cond_not_null,
-            cond_null=cond_null,
-        )
-        query = query + ";"
-
-        res_mysql = self.execute(query=query, silent=silent)
-        if not res_mysql:
-            return None
-        res = res_mysql[0].get("ct", None)
-        return int(str(res)) if res else None
 
     def select(
         self,
@@ -355,12 +264,10 @@ class MysqlClient:
         cond_geq: dict[str, object] = dict(),
         cond_l: dict[str, object] = dict(),
         cond_g: dict[str, object] = dict(),
-        order_by: str = "",
-        ascending_order: bool = True,
+        silent: bool = False,
         limit: int = 0,
         offset: int = 0,
-        silent: bool = False,
-    ) -> tuple[dict[str, object], ...]:
+    ) -> tuple:
         """Execute a SELECT query with various conditions.
 
         Parameters
@@ -403,9 +310,9 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
-        MySqlWrongQueryError
-            If query is wrong
         """
+        if not self.connection:
+            raise NoConnectionError(self.logger)
         query = (
             f"SELECT {', '.join(select_col) if select_col else '*'} FROM {table_name} "
         )
@@ -420,10 +327,6 @@ class MysqlClient:
             cond_not_null=cond_not_null,
             cond_null=cond_null,
         )
-        if order_by:
-            query = (
-                query + f" ORDER BY {order_by} {'ASC' if ascending_order else 'DESC'} "
-            )
         if limit:
             query = query + f" LIMIT {limit} "
             query = query + f" OFFSET {offset} "
@@ -432,13 +335,7 @@ class MysqlClient:
         res_mysql = self.execute(query=query, silent=silent)
         return res_mysql
 
-    def select_by_id(
-        self,
-        table_name: str,
-        id: str,
-        select_col: list[str] = list(),
-        silent: bool = False,
-    ) -> dict:
+    def select_by_id(self, table_name: str, id: str, silent: bool = False) -> dict:
         """Select a row from a database table by its ID.
 
         Parameters
@@ -447,8 +344,6 @@ class MysqlClient:
             Name of the table to select from
         id : str
             ID of the row to select
-        select_col : list[str], optional
-            List of columns to select, by default all columns
         silent : bool, optional
             If True, suppress logging of the query execution, by default False
 
@@ -461,14 +356,11 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
-        MySqlWrongQueryError
-            If query is wrong
         """
+        if not self.connection:
+            raise NoConnectionError(self.logger)
         res_mysql = self.select(
-            table_name=table_name,
-            select_col=select_col,
-            cond_eq={"id": id},
-            silent=silent,
+            table_name=table_name, cond_eq={"id": id}, silent=silent
         )
         if not res_mysql:
             return dict()
@@ -495,22 +387,18 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
-        MySqlWrongQueryError
-            If query is wrong
         """
-        try:
-            res_mysql = self.delete(
-                table_name=table_name, cond_eq={"id": id}, silent=silent
-            )
-        except MySqlWrongQueryError as e:
-            self.logger.warning(
-                f"wrong query when trying to delete by id, {type(e)=}, {str(e)}, {traceback.print_exc()}"
-            )
-            raise e
-        self.connection.commit()  # type: ignore
-        return res_mysql[0] if res_mysql else dict()
+        if not self.connection:
+            raise NoConnectionError(self.logger)
+        res_mysql = self.delete(
+            table_name=table_name, cond_eq={"id": id}, silent=silent
+        )
+        if not res_mysql:
+            return dict()
+        self.connection.commit()
+        return res_mysql[0]
 
-    def close(self):
+    def close_connection(self):
         if self.connection:
             self.connection.close()
 
@@ -532,27 +420,18 @@ class MysqlClient:
             If values dictionary is empty
         NoConnectionError
             If no database connection exists
-        MySqlWrongQueryError
-            If query is wrong
         """
         if not values:
-            self.logger.warning("could not insert one, no values given")
-            raise MySqlNoValueInsertionError()
+            raise NoValueInsertionError(self.logger)
+        if not self.connection:
+            raise NoConnectionError(self.logger)
         query = f"""
         INSERT INTO {table_name}
         ({", ".join([v for v in values])})
         VALUES ({", ".join(["%s"]*len(values))})
         """
-        try:
-            self.execute(
-                query=query, args=tuple(v for v in values.values()), silent=silent
-            )
-        except MySqlWrongQueryError as e:
-            self.logger.warning(
-                f"wrong query when trying to insert one, {type(e)=}, {str(e)}, {traceback.print_exc()}"
-            )
-            raise e
-        self.connection.commit()  # type: ignore
+        self.execute(query=query, args=tuple(v for v in values.values()), silent=silent)
+        self.connection.commit()
 
     def update(
         self,
@@ -569,7 +448,7 @@ class MysqlClient:
         cond_l: dict[str, object] = dict(),
         cond_g: dict[str, object] = dict(),
         silent: bool = False,
-    ) -> tuple[dict[str, object], ...]:
+    ) -> tuple:
         """Update rows in a database table based on conditions.
 
         Parameters
@@ -612,42 +491,36 @@ class MysqlClient:
             If no database connection exists
         DuplicateColumnUpdateError
             If a column appears in both update_col_col and update_col_value
-        MySqlWrongQueryError
-            If query is wrong
         """
+        if not self.connection:
+            raise NoConnectionError(self.logger)
+
         if not update_col_col and not update_col_value:
-            raise MySqlNoUpdateValuesError()
+            raise NoUpdateValuesError(self.logger)
 
         for col in update_col_col:
             if col in update_col_value:
-                raise (MySqlDuplicateColumnUpdateError(column=col))
+                raise (DuplicateColumnUpdateError(column=col))
         for col in update_col_value:
             if col in update_col_col:
-                raise (MySqlDuplicateColumnUpdateError(column=col))
+                raise (DuplicateColumnUpdateError(column=col))
 
-        try:
-            ids_to_update = self.select(
-                table_name=table_name,
-                select_col=["id"],
-                cond_eq=cond_eq,
-                cond_g=cond_g,
-                cond_geq=cond_geq,
-                cond_in=cond_in,
-                cond_l=cond_l,
-                cond_leq=cond_leq,
-                cond_neq=cond_neq,
-                cond_not_null=cond_not_null,
-                cond_null=cond_null,
-                silent=True,
-            )
-        except Exception as e:
-            self.logger.warning(
-                f"error when trying to get the ids to update, {type(e)=}, {str(e)}, {traceback.print_exc()}"
-            )
-            raise e
-        ids_to_update_ls = [str(dt["id"]) for dt in ids_to_update]
+        ids_to_update = self.select(
+            table_name=table_name,
+            select_col=["id"],
+            cond_eq=cond_eq,
+            cond_g=cond_g,
+            cond_geq=cond_geq,
+            cond_in=cond_in,
+            cond_l=cond_l,
+            cond_leq=cond_leq,
+            cond_neq=cond_neq,
+            cond_not_null=cond_not_null,
+            cond_null=cond_null,
+            silent=True,
+        )
+        ids_to_update_ls = [dt["id"] for dt in ids_to_update]
         if not ids_to_update:
-            self.logger.info("nothing to update")
             return tuple()
 
         for col in update_col_value:
@@ -658,14 +531,8 @@ class MysqlClient:
         update_ls = [f" {col} = {update_col[col]} " for col in update_col]
         query = query + f" {', '.join(update_ls)} "
         query = query + f""" WHERE id IN ('{"', '".join(ids_to_update_ls)}')"""
-        try:
-            self.execute(query=query, silent=silent)
-        except MySqlWrongQueryError as e:
-            self.logger.warning(
-                f"wrong query when trying to update, {type(e)=}, {str(e)}, {traceback.print_exc()}"
-            )
-            raise e
-        self.connection.commit()  # type: ignore
+        self.execute(query=query, silent=silent)
+        self.connection.commit()
 
         return self.select(table_name=table_name, cond_in={"id": ids_to_update_ls})
 
@@ -694,27 +561,15 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
-        DuplicateColumnUpdateError
-            If a column appears in both update_col_col and update_col_value
-        MySqlWrongQueryError
-            If query is wrong
         """
-        try:
-            mysql_res = self.update(
-                table_name=table_name,
-                update_col_value={k: v for (k, v) in values.items() if k != "id"},
-                cond_eq={"id": id},
-                silent=silent,
-            )
-        except MySqlWrongQueryError as e:
-            self.logger.warning(
-                f"wrong query when trying to update by id, {type(e)=}, {str(e)}, {traceback.print_exc()}"
-            )
-            raise e
-        return mysql_res[0] if mysql_res else dict()
-
-    def id_exists(self, table_name: str, id: str, silent: bool = False) -> bool:
-        res = self.select_by_id(table_name=table_name, id=id, silent=silent)
-        if res:
-            return True
-        return False
+        if not self.connection:
+            raise NoConnectionError(self.logger)
+        mysql_res = self.update(
+            table_name=table_name,
+            update_col_value={k: v for (k, v) in values.items() if k != "id"},
+            cond_eq={"id": id},
+            silent=silent,
+        )
+        if not mysql_res:
+            return dict()
+        return mysql_res[0]
