@@ -1,0 +1,79 @@
+name: Weekly Release Draft PR
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 6" # Every Saturday at 9:00 UTC
+
+jobs:
+  release:
+    name: Create Release PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Get full history
+
+      - name: Set up Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Create release branch from main
+        run: |
+          git fetch origin
+          git checkout origin/main
+          export BRANCH_NAME=release/$(date +'%Y-%m-%d')
+          git checkout -b $BRANCH_NAME
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+      - name: Get squash commits from develop not in main
+        id: commits
+        run: |
+          git fetch origin
+          COMMITS=$(git log origin/main..origin/develop --pretty=format:"%h %s" --reverse)
+          echo "$COMMITS" > commits.txt
+
+      - name: Cherry-pick commits
+        run: |
+          while read -r line; do
+            COMMIT=$(echo "$line" | awk '{print $1}')
+            git cherry-pick $COMMIT || true  # Allow conflicts to be resolved manually later
+          done < commits.txt
+
+      - name: Push release branch
+        run: |
+          git push origin $BRANCH_NAME
+
+      - name: Create PR body file
+        run: |
+          echo "## 📦 Weekly Release PR" > pr_body.md
+          echo "" >> pr_body.md
+          echo "This PR cherry-picks all squash-merged PRs from \`develop\` that are not yet in \`main\`." >> pr_body.md
+          echo "" >> pr_body.md
+          echo "Please review and **uncheck** anything that should **not** be released." >> pr_body.md
+          echo "You'll manually remove those commits before merging." >> pr_body.md
+          echo "" >> pr_body.md
+          echo "### ✅ Included PRs:" >> pr_body.md
+          awk '
+            {
+              match($0, /\(#([0-9]+)\)/, pr);
+              if (pr[1] != "") {
+                printf "- [ ] #%s %s\n", pr[1], substr($0, index($0,$2))
+              } else {
+                printf "- [ ] %s\n", $0
+              }
+            }
+          ' commits.txt >> pr_body.md
+
+      - name: Create PR using GitHub CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --title "Weekly Release: $BRANCH_NAME" \
+            --body-file pr_body.md \
+            --base main \
+            --head $BRANCH_NAME \
