@@ -183,6 +183,8 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
+        MySqlWrongQueryError
+            If query is wrong
         """
         res_mysql = self.select(
             table_name=table_name,
@@ -210,7 +212,14 @@ class MysqlClient:
             cond_null=cond_null,
         )
         query = query + ";"
-        self.execute(query=query, silent=silent)
+        try:
+            self.execute(query=query, silent=silent)
+        except MySqlWrongQueryError as e:
+            self.logger.warning(
+                f"wrong query when trying to update by id, {type(e)=}, {str(e)}, {traceback.print_exc()}"
+            )
+            raise e
+        self.connection.commit()  # type: ignore
         return res_mysql
 
     def execute(
@@ -236,6 +245,8 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
+        MySqlWrongQueryError
+            If query is wrong
         """
         if not self.connection:
             self.logger.error("could not execute query, no connection to Database")
@@ -308,6 +319,8 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
+        MySqlWrongQueryError
+            If query is wrong
         """
         query = f"SELECT COUNT({', '.join(select_col) if select_col else '*'}) AS ct FROM {table_name} "
         query = query + self.generate_cond(
@@ -390,6 +403,8 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
+        MySqlWrongQueryError
+            If query is wrong
         """
         query = (
             f"SELECT {', '.join(select_col) if select_col else '*'} FROM {table_name} "
@@ -417,7 +432,13 @@ class MysqlClient:
         res_mysql = self.execute(query=query, silent=silent)
         return res_mysql
 
-    def select_by_id(self, table_name: str, id: str, silent: bool = False) -> dict:
+    def select_by_id(
+        self,
+        table_name: str,
+        id: str,
+        select_col: list[str] = list(),
+        silent: bool = False,
+    ) -> dict:
         """Select a row from a database table by its ID.
 
         Parameters
@@ -426,6 +447,8 @@ class MysqlClient:
             Name of the table to select from
         id : str
             ID of the row to select
+        select_col : list[str], optional
+            List of columns to select, by default all columns
         silent : bool, optional
             If True, suppress logging of the query execution, by default False
 
@@ -438,9 +461,14 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
+        MySqlWrongQueryError
+            If query is wrong
         """
         res_mysql = self.select(
-            table_name=table_name, cond_eq={"id": id}, silent=silent
+            table_name=table_name,
+            select_col=select_col,
+            cond_eq={"id": id},
+            silent=silent,
         )
         if not res_mysql:
             return dict()
@@ -467,6 +495,8 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
+        MySqlWrongQueryError
+            If query is wrong
         """
         try:
             res_mysql = self.delete(
@@ -502,6 +532,8 @@ class MysqlClient:
             If values dictionary is empty
         NoConnectionError
             If no database connection exists
+        MySqlWrongQueryError
+            If query is wrong
         """
         if not values:
             self.logger.warning("could not insert one, no values given")
@@ -580,6 +612,8 @@ class MysqlClient:
             If no database connection exists
         DuplicateColumnUpdateError
             If a column appears in both update_col_col and update_col_value
+        MySqlWrongQueryError
+            If query is wrong
         """
         if not update_col_col and not update_col_value:
             raise MySqlNoUpdateValuesError()
@@ -660,6 +694,10 @@ class MysqlClient:
         ------
         NoConnectionError
             If no database connection exists
+        DuplicateColumnUpdateError
+            If a column appears in both update_col_col and update_col_value
+        MySqlWrongQueryError
+            If query is wrong
         """
         try:
             mysql_res = self.update(
