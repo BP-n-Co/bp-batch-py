@@ -1,4 +1,3 @@
-from datetime import datetime
 from logging import Logger
 
 from requests import Session
@@ -6,14 +5,14 @@ from requests import Session
 from _config import GITHUB_TOKEN, base_logger
 
 
-class GithubRequestException(Exception):
+class GithubServerError(Exception):
     def __init__(self, detail: str | None = None) -> None:
-        super().__init__(f"Error when requesting Github Api, {detail}")
+        super().__init__(f"problem when requesting Github Api, {detail}")
 
 
-class GithubWrongAttributesException(Exception):
+class GithubNoDataResponseError(Exception):
     def __init__(self, detail: str | None = None) -> None:
-        super().__init__(f"wrong attributes when requesting github, {detail}")
+        super().__init__(f"got no data response {detail}")
 
 
 class GithubClient:
@@ -26,27 +25,30 @@ class GithubClient:
     def close(self):
         self.session.close()
 
-    def graphql_post(self, query: str, silent: bool = False) -> dict:
+    def graphql_post(self, query: str, silent=False) -> dict:
         if not silent:
-            self.logger.debug(f"Github api executed: {query}")
+            self.logger.debug(f"posting to github {query=}")
+
         headers = {"Authorization": f"token {self.token}"}
         resp = self.session.post(
             url="https://api.github.com/graphql", headers=headers, json={"query": query}
         )
+
+        if not silent:
+            self.logger.debug(f"got from github {resp.content=}")
+
         if not resp.status_code == 200:
             message = f"could not get response from Github {resp.status_code=}."
-            self.logger.error(message)
-            raise GithubRequestException(detail=message)
+            self.logger.warning(message)
+            raise GithubServerError(detail=message)
         try:
             resp_dict = resp.json()
         except Exception as e:
             message = f"could not serialized Github response : {type(e)=}, {str(e)=}."
             self.logger.warning(message)
-            raise GithubRequestException(detail=message)
+            raise GithubServerError(detail=message)
         if not isinstance(resp_dict, dict) or "data" not in resp_dict:
-            message = f"got response without data : {str(resp_dict)=}"
+            message = f"{query=} got response without data : {str(resp_dict)=}"
             self.logger.warning(message)
-            raise GithubRequestException(detail=message)
-        if not silent:
-            self.logger.debug(f"Got response from github {resp_dict}")
+            raise GithubNoDataResponseError(detail=message)
         return resp_dict["data"]
