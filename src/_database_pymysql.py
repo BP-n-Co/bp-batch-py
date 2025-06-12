@@ -216,7 +216,7 @@ class MysqlClient:
             self.execute(query=query, silent=silent)
         except MySqlWrongQueryError as e:
             self.logger.warning(
-                f"wrong query when trying to update by id, {type(e)=}, {str(e)}, {traceback.print_exc()}"
+                f"wrong query when updating by id, {traceback.format_exc()}"
             )
             raise e
         self.connection.commit()  # type: ignore
@@ -257,7 +257,7 @@ class MysqlClient:
                 res = cursor.fetchall()
             except pymysql.err.ProgrammingError as e:
                 self.logger.warning(
-                    f"error while executing query {type(e)=}, {str(e)}, {traceback.print_exc()}"
+                    f"error while executing query, {traceback.format_exc()}"
                 )
                 raise MySqlWrongQueryError(f"{type(e)=}, {str(e)=}")
             if not silent:
@@ -504,7 +504,7 @@ class MysqlClient:
             )
         except MySqlWrongQueryError as e:
             self.logger.warning(
-                f"wrong query when trying to delete by id, {type(e)=}, {str(e)}, {traceback.print_exc()}"
+                f"wrong query when deleting by id, {traceback.format_exc()}"
             )
             raise e
         self.connection.commit()  # type: ignore
@@ -514,7 +514,13 @@ class MysqlClient:
         if self.connection:
             self.connection.close()
 
-    def insert_one(self, table_name: str, values: dict[str, object], silent=False):
+    def insert_one(
+        self,
+        table_name: str,
+        values: dict[str, object],
+        silent=False,
+        or_ignore=False,
+    ):
         """Insert a single row into a database table.
 
         Parameters
@@ -525,6 +531,8 @@ class MysqlClient:
             Dictionary of column names and their corresponding values
         silent : bool, optional
             If True, suppress logging of the query execution, by default False
+        or_ignore : bool, optional
+            If True, use INSERT IGNORE, default False
 
         Raises
         ------
@@ -538,8 +546,9 @@ class MysqlClient:
         if not values:
             self.logger.warning("could not insert one, no values given")
             raise MySqlNoValueInsertionError()
+
         query = f"""
-        INSERT INTO {table_name}
+        INSERT {"IGNORE" if or_ignore else ""} INTO {table_name}
         ({", ".join([v for v in values])})
         VALUES ({", ".join(["%s"]*len(values))})
         """
@@ -547,11 +556,11 @@ class MysqlClient:
             self.execute(
                 query=query, args=tuple(v for v in values.values()), silent=silent
             )
-        except MySqlWrongQueryError as e:
+        except MySqlWrongQueryError:
             self.logger.warning(
-                f"wrong query when trying to insert one, {type(e)=}, {str(e)}, {traceback.print_exc()}"
+                f"wrong query when inserting one, {traceback.format_exc()}"
             )
-            raise e
+            raise
         self.connection.commit()  # type: ignore
 
     def update(
@@ -642,7 +651,7 @@ class MysqlClient:
             )
         except Exception as e:
             self.logger.warning(
-                f"error when trying to get the ids to update, {type(e)=}, {str(e)}, {traceback.print_exc()}"
+                f"error when to getting the ids to update, {traceback.format_exc()}"
             )
             raise e
         ids_to_update_ls = [str(dt["id"]) for dt in ids_to_update]
@@ -661,9 +670,7 @@ class MysqlClient:
         try:
             self.execute(query=query, silent=silent)
         except MySqlWrongQueryError as e:
-            self.logger.warning(
-                f"wrong query when trying to update, {type(e)=}, {str(e)}, {traceback.print_exc()}"
-            )
+            self.logger.warning(f"wrong query when updating, {traceback.format_exc()}")
             raise e
         self.connection.commit()  # type: ignore
 
@@ -708,7 +715,7 @@ class MysqlClient:
             )
         except MySqlWrongQueryError as e:
             self.logger.warning(
-                f"wrong query when trying to update by id, {type(e)=}, {str(e)}, {traceback.print_exc()}"
+                f"wrong query when updating by id, {traceback.format_exc()}"
             )
             raise e
         return mysql_res[0] if mysql_res else dict()
