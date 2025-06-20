@@ -34,22 +34,53 @@ class CommitsFetcher:
                 select_col=[
                     "id",
                     "name",
-                    "ownerId",
+                    "ownerIdUser",
+                    "ownerIdOrganization",
+                    "ownerIsOrganization",
                     "rootCommitIsReached",
                     "trackedBranchRef",
                 ],
                 silent=SILENT,
             )
-            owners = self.mysql_client.select(
-                table_name="git_user",
-                select_col=["id", "name"],
-                cond_in={"id": [repo["ownerId"] for repo in repos]},
-                silent=SILENT,
+            owners: list[dict[str, object]] = list()
+            organization_ids = [
+                repo["ownerIdOrganization"]
+                for repo in repos
+                if repo["ownerIsOrganization"]
+            ]
+            owners.extend(
+                self.mysql_client.select(
+                    table_name="git_organization",
+                    select_col=["id", "login"],
+                    cond_in={"id": organization_ids},
+                    silent=SILENT,
+                )
             )
-            owner_map = {owner["id"]: owner["name"] for owner in owners}
+            user_ids = [
+                repo["ownerIdUser"] for repo in repos if not repo["ownerIsOrganization"]
+            ]
+            owners.extend(
+                self.mysql_client.select(
+                    table_name="git_user",
+                    select_col=["id", "login"],
+                    cond_in={"id": user_ids},
+                    silent=SILENT,
+                )
+            )
+            owner_map = {owner["id"]: owner["login"] for owner in owners}
             self.repos = [dt for dt in repos]
             for repo in self.repos:
-                repo.update({"ownerName": owner_map[repo["ownerId"]]})
+                repo.update(
+                    {
+                        "ownerLogin": owner_map[
+                            (
+                                repo["ownerIdOrganization"]
+                                if repo["ownerIsOrganization"]
+                                else repo["ownerIdUser"]
+                            )
+                        ]
+                    }
+                )
         except Exception as e:
             self.logger.error(f"could not fetch the repositories, {type(e)=} {str(e)=}")
             raise e
@@ -311,7 +342,7 @@ class CommitsFetcher:
             # 2.1 Fetch from start until most_recent_commit (if exists)
             repo_name = str(repo["name"])
             repo_tracked_branch_ref = str(repo["trackedBranchRef"])
-            repo_owner_name = str(repo["ownerName"])
+            repo_owner_name = str(repo["ownerLogin"])
             self.commits[repo_id] = list()
             self.logger.info(
                 f"starting fetching of branch ref {repo_tracked_branch_ref} of {repo_name=}, {repo_owner_name=}"

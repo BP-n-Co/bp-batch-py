@@ -59,11 +59,19 @@ jobs:
           echo "### ✅ Included PRs:" >> pr_body.md
           awk '
             {
+              # Extract PR number from (#number)
               match($0, /\(#([0-9]+)\)/, pr);
+
+              # Extract commit message before the PR reference
+              split($0, parts, /\s*\(#([0-9]+)\)/);
+
+              # Trim leading spaces
+              sub(/^[ \t]+/, "", parts[1]);
+
               if (pr[1] != "") {
-                printf "- [ ] #%s %s\n", pr[1], substr($0, index($0,$2))
+                printf "- [ ] #%s \n", pr[1];
               } else {
-                printf "- [ ] %s\n", $0
+                printf "- [ ] %s\n", parts[1];
               }
             }
           ' commits.txt >> pr_body.md
